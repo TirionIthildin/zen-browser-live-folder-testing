@@ -99,3 +99,17 @@ zen-live-folder-github-option-repo-list-note =
 
 zen-live-folders-promotion-title = Live Folder Created!
 zen-live-folders-promotion-description = Latest content from your RSS feeds or GitHub pull requests will appear here automatically.
+
+zen-live-folder-rest-custom =
+    .label = Custom REST API…
+
+zen-live-folder-rest-dialog-title = Create Custom REST Live Folder
+zen-live-folder-rest-dialog-config = Configuration (JSON)
+zen-live-folder-rest-dialog-hint = Include: url, label, icon (optional, use "favicon" for favicon from API origin), headers, mapping
+zen-live-folder-rest-dialog-create = Create
+zen-live-folder-rest-option-headers = Edit headers
+zen-live-folder-rest-prompt-headers = Enter HTTP headers as JSON (e.g. {"Authorization": "Bearer token"}):
+zen-live-folder-rest-dialog-cancel = Cancel
+zen-live-folder-rest-invalid-json = Invalid mapping JSON.
+zen-live-folder-rest-invalid-url = Invalid or unsupported URL.
+zen-live-folder-rest-invalid-headers = Invalid headers JSON.

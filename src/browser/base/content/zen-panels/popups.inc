@@ -17,6 +17,11 @@
         data-l10n-id="zen-live-folder-type-rss"
         command="cmd_zenNewLiveFolder"
         image="chrome://browser/skin/zen-icons/selectable/logo-rss.svg"/>
+      <menuitem
+        data-l10n-id="zen-live-folder-rest-custom"
+        label="Custom REST API…"
+        command="cmd_zenNewLiveFolder"
+        image="chrome://browser/skin/zen-icons/selectable/code.svg"/>
     </menupopup>
   </menu>
   <menuseparator/>

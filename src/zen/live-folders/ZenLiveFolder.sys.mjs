@@ -121,7 +121,7 @@ export class nsZenLiveFolderProvider {
     this.manager.saveState();
   }
 
-  fetch(url, { maxContentLength = 5 * 1024 * 1024 } = {}) {
+  fetch(url, { maxContentLength = 5 * 1024 * 1024, headers = {} } = {}) {
     const uri = lazy.NetUtil.newURI(url);
     // TODO: Support userContextId when fetching, it should be inherited from the folder's
     // current space context ID.
@@ -149,6 +149,18 @@ export class nsZenLiveFolderProvider {
         Ci.nsILoadInfo.SEC_REQUIRE_CORS_INHERITS_SEC_CONTEXT | Ci.nsILoadInfo.SEC_COOKIES_INCLUDE,
       triggeringPrincipal: principal,
     }).QueryInterface(Ci.nsIHttpChannel);
+
+    if (headers && typeof headers === "object") {
+      for (const [key, value] of Object.entries(headers)) {
+        if (key && value != null && typeof value === "string") {
+          try {
+            channel.setRequestHeader(key, value, false);
+          } catch (ex) {
+            // Ignore invalid or forbidden headers
+          }
+        }
+      }
+    }
 
     let httpStatus = null;
     let contentType = "";

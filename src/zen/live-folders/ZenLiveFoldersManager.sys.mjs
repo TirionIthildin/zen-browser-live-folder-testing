@@ -27,6 +27,10 @@ const providers = [
     path: "resource:///modules/zen/GithubLiveFolder.sys.mjs",
     module: "nsGithubLiveFolderProvider",
   },
+  {
+    path: "resource:///modules/zen/RestAPILiveFolder.sys.mjs",
+    module: "nsRestAPILiveFolderProvider",
+  },
 ];
 
 class nsZenLiveFoldersManager {
@@ -89,11 +93,12 @@ class nsZenLiveFoldersManager {
     }
   }
 
-  #onCommand(event) {
+  async #onCommand(event) {
     switch (event.target.id) {
       case "cmd_zenNewLiveFolder": {
-        const target = event.sourceEvent.target;
-        switch (target.getAttribute("data-l10n-id")) {
+        const target = event.sourceEvent?.target;
+        const l10nId = target?.getAttribute("data-l10n-id");
+        switch (l10nId) {
           case "zen-live-folder-github-pull-requests": {
             this.createFolder("github:pull-requests");
             break;
@@ -104,6 +109,14 @@ class nsZenLiveFoldersManager {
           }
           case "zen-live-folder-type-rss": {
             this.createFolder("rss");
+            break;
+          }
+          case "zen-live-folder-rest-custom": {
+            const { openRestLiveFolderDialog } = ChromeUtils.importESModule(
+              "resource:///modules/zen/RestLiveFolderDialog.sys.mjs",
+              { global: "current" }
+            );
+            await openRestLiveFolderDialog(this.window);
             break;
           }
         }
@@ -217,6 +230,61 @@ class nsZenLiveFoldersManager {
 
     this.liveFolders.set(folder.id, liveFolder);
 
+    liveFolder.start();
+    this.saveState();
+
+    return folder.id;
+  }
+
+  async createFolderFromRestConfig(win, config) {
+    const { url, mapping, label, icon, headers, maxItems } = config;
+    if (!url || !mapping) {
+      return -1;
+    }
+
+    const ProviderClass = this.registry.get("rest");
+    if (!ProviderClass) {
+      return -1;
+    }
+
+    const metadataLabel = label || url || "REST API";
+    let displayIcon = icon || "chrome://browser/skin/zen-icons/selectable/code.svg";
+    if (displayIcon === "favicon" && url) {
+      try {
+        displayIcon = `${new URL(url).origin}/favicon.ico`;
+      } catch {
+        displayIcon = "chrome://browser/skin/zen-icons/selectable/code.svg";
+      }
+    }
+
+    const folder = win.gZenFolders.createFolder([], {
+      label: metadataLabel,
+      isLiveFolder: true,
+      collapsed: true,
+    });
+
+    this.#maybeShowPromotion(folder, displayIcon);
+    win.gZenFolders.setFolderUserIcon(folder, displayIcon);
+
+    const stateConfig = {
+      url,
+      mapping,
+      label: metadataLabel,
+      icon: icon || "",
+      headers: headers && typeof headers === "object" ? headers : {},
+    };
+    if (maxItems != null && Number.isFinite(maxItems)) {
+      stateConfig.maxItems = maxItems;
+    }
+    const state = this.#applyDefaultStateValues(stateConfig);
+
+    const liveFolder = new ProviderClass({
+      state,
+      manager: this,
+      id: folder.id,
+    });
+
+    this.liveFolders.set(folder.id, liveFolder);
     liveFolder.start();
     this.saveState();
 
