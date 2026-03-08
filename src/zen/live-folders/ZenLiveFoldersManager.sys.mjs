@@ -237,7 +237,7 @@ class nsZenLiveFoldersManager {
   }
 
   async createFolderFromRestConfig(win, config) {
-    const { url, mapping, label, icon, headers, maxItems } = config;
+    const { url, params, mapping, label, icon, headers, maxItems } = config;
     if (!url || !mapping) {
       return -1;
     }
@@ -268,6 +268,8 @@ class nsZenLiveFoldersManager {
 
     const stateConfig = {
       url,
+      params:
+        params && typeof params === "object" && !Array.isArray(params) ? params : {},
       mapping,
       label: metadataLabel,
       icon: icon || "",
@@ -289,6 +291,43 @@ class nsZenLiveFoldersManager {
     this.saveState();
 
     return folder.id;
+  }
+
+  updateFolderFromRestConfig(liveFolderId, config) {
+    const liveFolder = this.liveFolders.get(liveFolderId);
+    if (!liveFolder || liveFolder.constructor.type !== "rest") {
+      return false;
+    }
+
+    const { url, params, mapping, label, icon, headers, maxItems } = config;
+    if (!url || !mapping) {
+      return false;
+    }
+
+    liveFolder.state.url = url;
+    liveFolder.state.params =
+      params && typeof params === "object" && !Array.isArray(params) ? params : {};
+    liveFolder.state.mapping = mapping;
+    liveFolder.state.label = label || url || "REST API";
+    liveFolder.state.icon = icon ?? "";
+    liveFolder.state.headers =
+      headers && typeof headers === "object" && !Array.isArray(headers) ? headers : {};
+    if (maxItems != null && Number.isFinite(maxItems)) {
+      liveFolder.state.maxItems = maxItems;
+    }
+
+    const folder = this.getFolderForLiveFolder(liveFolder);
+    if (folder) {
+      const metadata = liveFolder.getMetadata();
+      folder.label = metadata.label;
+      if (metadata.icon) {
+        this.window.gZenFolders.setFolderUserIcon(folder, metadata.icon);
+      }
+    }
+
+    liveFolder.refresh();
+    this.saveState();
+    return true;
   }
 
   #maybeShowPromotion(folder, icon) {

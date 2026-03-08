@@ -30,6 +30,46 @@ function getByPath(obj, path) {
   return current;
 }
 
+/**
+ * Builds the final URL from a template and params.
+ * - Replaces {key} placeholders in the URL with params[key] (URL-encoded).
+ * - Params not used in the path are appended as query string.
+ *
+ * @param {string} urlTemplate - URL with optional {paramName} placeholders.
+ * @param {object} params - Key-value pairs for substitution and query params.
+ * @returns {string} The resolved URL.
+ */
+function buildUrl(urlTemplate, params) {
+  if (!params || typeof params !== "object" || Array.isArray(params)) {
+    return urlTemplate;
+  }
+
+  const used = new Set();
+  let url = urlTemplate;
+
+  for (const [key, value] of Object.entries(params)) {
+    if (value == null || typeof value !== "string") {
+      continue;
+    }
+    const placeholder = `{${key}}`;
+    if (url.includes(placeholder)) {
+      url = url.split(placeholder).join(encodeURIComponent(value));
+      used.add(key);
+    }
+  }
+
+  const queryParams = Object.entries(params)
+    .filter(([k, v]) => !used.has(k) && v != null && typeof v === "string")
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`);
+
+  if (queryParams.length > 0) {
+    const sep = url.includes("?") ? "&" : "?";
+    url += sep + queryParams.join("&");
+  }
+
+  return url;
+}
+
 export class nsRestAPILiveFolderProvider extends nsZenLiveFolderProvider {
   static type = "rest";
 
@@ -37,6 +77,10 @@ export class nsRestAPILiveFolderProvider extends nsZenLiveFolderProvider {
     super({ id, state, manager });
 
     this.state.url = state.url ?? "";
+    this.state.params =
+      state.params && typeof state.params === "object" && !Array.isArray(state.params)
+        ? state.params
+        : {};
     this.state.mapping = state.mapping ?? {
       items: "",
       id: "id",
@@ -51,7 +95,8 @@ export class nsRestAPILiveFolderProvider extends nsZenLiveFolderProvider {
 
   async fetchItems() {
     try {
-      const { text } = await this.fetch(this.state.url, {
+      const url = buildUrl(this.state.url, this.state.params);
+      const { text } = await this.fetch(url, {
         maxContentLength: MAX_RESPONSE_SIZE,
         headers: this.state.headers,
       });
@@ -111,7 +156,8 @@ export class nsRestAPILiveFolderProvider extends nsZenLiveFolderProvider {
     let icon = this.state.icon || "chrome://browser/skin/zen-icons/selectable/code.svg";
     if (icon === "favicon" && this.state.url) {
       try {
-        const origin = new URL(this.state.url).origin;
+        const url = buildUrl(this.state.url, this.state.params);
+        const origin = new URL(url).origin;
         icon = `${origin}/favicon.ico`;
       } catch {
         icon = "chrome://browser/skin/zen-icons/selectable/code.svg";
@@ -126,8 +172,8 @@ export class nsRestAPILiveFolderProvider extends nsZenLiveFolderProvider {
   get options() {
     return [
       {
-        l10nId: "zen-live-folder-rest-option-headers",
-        key: "editHeaders",
+        l10nId: "zen-live-folder-rest-option-edit-config",
+        key: "editConfig",
       },
     ];
   }
@@ -135,46 +181,17 @@ export class nsRestAPILiveFolderProvider extends nsZenLiveFolderProvider {
   onOptionTrigger(option) {
     super.onOptionTrigger(option);
     const key = option.getAttribute("option-key");
-    if (key === "editHeaders") {
-      this.#promptForHeaders();
+    if (key === "editConfig") {
+      this.#openEditConfigDialog();
     }
   }
 
-  async #promptForHeaders() {
-    const lazy = {};
-    ChromeUtils.defineLazyGetter(
-      lazy,
-      "l10n",
-      () => new Localization(["browser/zen-live-folders.ftl"])
+  async #openEditConfigDialog() {
+    const { openRestLiveFolderDialog } = ChromeUtils.importESModule(
+      "resource:///modules/zen/RestLiveFolderDialog.sys.mjs",
+      { global: "current" }
     );
-    const current = JSON.stringify(this.state.headers || {}, null, 2);
-    const input = { value: current };
-    const [prompt] = await lazy.l10n.formatValues(["zen-live-folder-rest-prompt-headers"]);
-    const ok = Services.prompt.prompt(
-      this.manager.window,
-      null,
-      prompt,
-      input,
-      null,
-      { value: null }
-    );
-    if (!ok) {
-      return;
-    }
-    try {
-      const parsed = input.value?.trim()
-        ? JSON.parse(input.value)
-        : {};
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        this.state.headers = parsed;
-        this.refresh();
-        this.requestSave();
-      }
-    } catch {
-      this.manager.window.gZenUIManager?.showToast?.("zen-live-folder-rest-invalid-json", {
-        timeout: 4000,
-      });
-    }
+    await openRestLiveFolderDialog(this.manager.window, { liveFolder: this });
   }
 
   serialize() {
@@ -182,6 +199,7 @@ export class nsRestAPILiveFolderProvider extends nsZenLiveFolderProvider {
       state: {
         ...this.state,
         url: this.state.url,
+        params: this.state.params,
         mapping: this.state.mapping,
         label: this.state.label,
         icon: this.state.icon,

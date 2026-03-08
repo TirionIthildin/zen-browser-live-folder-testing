@@ -4,6 +4,7 @@
 
 const DEFAULT_CONFIG_JSON = `{
   "url": "https://api.example.com/items",
+  "params": {},
   "label": "",
   "icon": "",
   "headers": {},
@@ -23,13 +24,43 @@ ChromeUtils.defineESModuleGetters(lazy, {
 });
 
 /**
- * Opens the Custom REST API Live Folder creation dialog.
+ * Builds the config JSON object for a REST live folder.
+ *
+ * @param {object} state - The live folder state.
+ * @returns {string} - JSON string of the config.
+ */
+function configToJson(state) {
+  const config = {
+    url: state.url ?? "https://api.example.com/items",
+    params: state.params ?? {},
+    label: state.label ?? "",
+    icon: state.icon ?? "",
+    headers: state.headers ?? {},
+    mapping: state.mapping ?? {
+      items: "",
+      id: "id",
+      title: "title",
+      url: "url",
+      subtitle: "author",
+    },
+    maxItems: state.maxItems ?? 100,
+  };
+  return JSON.stringify(config, null, 2);
+}
+
+/**
+ * Opens the Custom REST API Live Folder creation or edit dialog.
  * The dialog shows a single JSON editor with the full config object.
  *
  * @param {Window} win - The browser window.
- * @returns {Promise<boolean>} - Resolves to true if a folder was created, false if cancelled.
+ * @param {object} [options] - Optional options.
+ * @param {object} [options.liveFolder] - If provided, edit mode: pre-fill with this folder's config and update on save.
+ * @returns {Promise<boolean>} - Resolves to true if a folder was created/updated, false if cancelled.
  */
-export async function openRestLiveFolderDialog(win) {
+export async function openRestLiveFolderDialog(win, options = {}) {
+  const { liveFolder } = options;
+  const isEditMode = !!liveFolder;
+
   const doc = win.document;
   const dialog = doc.createElementNS("http://www.w3.org/1999/xhtml", "dialog");
   dialog.setAttribute("id", "zen-rest-live-folder-dialog");
@@ -48,7 +79,7 @@ export async function openRestLiveFolderDialog(win) {
   configTextarea.id = "zen-rest-dialog-config";
   configTextarea.rows = 20;
   configTextarea.spellcheck = false;
-  configTextarea.value = DEFAULT_CONFIG_JSON;
+  configTextarea.value = isEditMode ? configToJson(liveFolder.state) : DEFAULT_CONFIG_JSON;
 
   const hintEl = doc.createElementNS("http://www.w3.org/1999/xhtml", "p");
   hintEl.className = "zen-rest-dialog-hint";
@@ -57,7 +88,10 @@ export async function openRestLiveFolderDialog(win) {
   buttons.className = "zen-rest-dialog-buttons";
   const createBtn = doc.createElementNS("http://www.w3.org/1999/xhtml", "button");
   createBtn.type = "submit";
-  createBtn.setAttribute("data-l10n-id", "zen-live-folder-rest-dialog-create");
+  createBtn.setAttribute(
+    "data-l10n-id",
+    isEditMode ? "zen-live-folder-rest-dialog-save" : "zen-live-folder-rest-dialog-create"
+  );
   createBtn.className = "zen-rest-dialog-create";
   const cancelBtn = doc.createElementNS("http://www.w3.org/1999/xhtml", "button");
   cancelBtn.type = "button";
@@ -75,10 +109,16 @@ export async function openRestLiveFolderDialog(win) {
 
   doc.documentElement.appendChild(dialog);
 
+  const titleId = isEditMode
+    ? "zen-live-folder-rest-dialog-edit-title"
+    : "zen-live-folder-rest-dialog-title";
+  const createId = isEditMode
+    ? "zen-live-folder-rest-dialog-save"
+    : "zen-live-folder-rest-dialog-create";
   const ids = [
-    "zen-live-folder-rest-dialog-title",
+    titleId,
     "zen-live-folder-rest-dialog-config",
-    "zen-live-folder-rest-dialog-create",
+    createId,
     "zen-live-folder-rest-dialog-cancel",
     "zen-live-folder-rest-dialog-hint",
   ];
@@ -91,18 +131,19 @@ export async function openRestLiveFolderDialog(win) {
     [titleStr, configLabelStr, createLabelStr, cancelLabelStr, hintStr] =
       await doc.l10n.formatValues(ids);
   } catch {
-    titleStr = "Create Custom REST Live Folder";
+    titleStr = isEditMode ? "Edit REST Live Folder" : "Create Custom REST Live Folder";
     configLabelStr = "Configuration (JSON)";
-    createLabelStr = "Create";
+    createLabelStr = isEditMode ? "Save" : "Create";
     cancelLabelStr = "Cancel";
-    hintStr = "Include: url, label, icon (optional, use \"favicon\" for favicon from API origin), headers, mapping";
+    hintStr =
+      "Include: url, params (optional, for {placeholder} substitution and query string), label, icon (optional, use \"favicon\"), headers, mapping";
   }
 
   const fallback = (s, d) => (s != null && s !== "" ? s : d);
-  dialog.setAttribute("aria-label", fallback(titleStr, "Create Custom REST Live Folder"));
-  titleEl.textContent = fallback(titleStr, "Create Custom REST Live Folder");
+  dialog.setAttribute("aria-label", fallback(titleStr, "Edit REST Live Folder"));
+  titleEl.textContent = fallback(titleStr, isEditMode ? "Edit REST Live Folder" : "Create Custom REST Live Folder");
   configLabel.textContent = fallback(configLabelStr, "Configuration (JSON)");
-  createBtn.textContent = fallback(createLabelStr, "Create");
+  createBtn.textContent = fallback(createLabelStr, isEditMode ? "Save" : "Create");
   cancelBtn.textContent = fallback(cancelLabelStr, "Cancel");
   hintEl.textContent = fallback(
     hintStr,
@@ -185,8 +226,18 @@ export async function openRestLiveFolderDialog(win) {
         }
       }
 
+      let params = {};
+      if (config.params && typeof config.params === "object" && !Array.isArray(config.params)) {
+        for (const [k, v] of Object.entries(config.params)) {
+          if (k && (v == null || typeof v === "string")) {
+            params[k] = v;
+          }
+        }
+      }
+
       const createConfig = {
         url,
+        params: Object.keys(params).length > 0 ? params : undefined,
         mapping,
         label: config.label && typeof config.label === "string" ? config.label : undefined,
         icon: config.icon && typeof config.icon === "string" ? config.icon : undefined,
@@ -195,14 +246,23 @@ export async function openRestLiveFolderDialog(win) {
           config.maxItems != null && Number.isFinite(config.maxItems) ? config.maxItems : undefined,
       };
 
-      const created = await lazy.ZenLiveFoldersManager.createFolderFromRestConfig(
-        win,
-        createConfig
-      );
+      let success = false;
+      if (isEditMode) {
+        success = lazy.ZenLiveFoldersManager.updateFolderFromRestConfig(
+          liveFolder.id,
+          createConfig
+        );
+      } else {
+        const created = await lazy.ZenLiveFoldersManager.createFolderFromRestConfig(
+          win,
+          createConfig
+        );
+        success = created !== -1;
+      }
 
       dialog.close();
       cleanup();
-      resolve(created !== -1);
+      resolve(success);
     });
 
     dialog.showModal();
